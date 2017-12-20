@@ -11,7 +11,7 @@
   do {                                                                           \
     CUresult _status = apiFuncCall;                                            \
     if (_status != CUDA_SUCCESS) {                                             \
-      fprintf(stderr, "%s:%d: error: function %s failed with error %d.\n",   \
+      printf("%s:%d: error: function %s failed with error %d.\n",   \
         __FILE__, __LINE__, #apiFuncCall, _status);                    \
       exit(-1);                                                              \
     }                                                                          \
@@ -21,7 +21,7 @@
   do {                                                                           \
     cudaError_t _status = apiFuncCall;                                         \
     if (_status != cudaSuccess) {                                              \
-      fprintf(stderr, "%s:%d: error: function %s failed with error %s.\n",   \
+      printf("%s:%d: error: function %s failed with error %s.\n",   \
         __FILE__, __LINE__, #apiFuncCall, cudaGetErrorString(_status));\
       exit(-1);                                                              \
     }                                                                          \
@@ -116,6 +116,8 @@ do_pass_same_context(CUdevice device)
   cuCtxCreate(&deviceContext, 0, device);
   CUpti_ActivityPCSamplingConfig configPC;
   configPC.samplingPeriod = CUPTI_ACTIVITY_PC_SAMPLING_PERIOD_MIN;
+  configPC.samplingPeriod2 = 0;
+  configPC.size = sizeof(configPC);
   cuptiActivityConfigurePCSampling(deviceContext, &configPC);
 
   CUmodule moduleAdd;
@@ -202,14 +204,16 @@ do_pass_same_context(CUdevice device)
 
 
 static void
-do_pass_diff_context(CUdevice device)
+do_pass_diff_context(CUdevice device, int del)
 {
-#pragma omp parallel 
+#pragma omp parallel num_threads(2) 
   {
     CUcontext context;
     cuCtxCreate(&context, 0, device);
     CUpti_ActivityPCSamplingConfig configPC;
     configPC.samplingPeriod = CUPTI_ACTIVITY_PC_SAMPLING_PERIOD_MIN;
+    configPC.samplingPeriod2 = 0;
+    configPC.size = sizeof(configPC);
     cuptiActivityConfigurePCSampling(context, &configPC);
 
     int *h_A, *h_B, *h_C;
@@ -284,7 +288,7 @@ do_pass_diff_context(CUdevice device)
     free(h_A);
     free(h_B);
     free(h_C);
-    //cuCtxDestroy(context);
+    if (del) cuCtxDestroy(context);
   }
 }
 
@@ -320,7 +324,9 @@ main(int argc, char *argv[])
     } else if (option == "same_context") {
       do_pass_same_context(device);
     } else if (option == "diff_context") {
-      do_pass_diff_context(device);
+      do_pass_diff_context(device,0);
+    } else if (option == "diff_context_delete") {
+      do_pass_diff_context(device,1);
     } else {
       exit(-1);
     }

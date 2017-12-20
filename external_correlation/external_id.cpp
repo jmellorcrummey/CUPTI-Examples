@@ -9,7 +9,7 @@
     if (_status != CUPTI_SUCCESS) {                                     \
       const char *errstr;                                               \
       cuptiGetResultString(_status, &errstr);                           \
-      fprintf(stderr, "%s:%d: error: function %s failed with error %s.\n", \
+      printf("%s:%d: error: function %s failed with error %s.\n", \
         __FILE__, __LINE__, #call, errstr);                       \
       exit(-1);                                                         \
     }                                                                   \
@@ -201,6 +201,7 @@ printActivity(CUpti_Activity *record)
         break;
       }
     default:
+        printf("activity record kind %u\n", record->kind);
       break;
   }
 }
@@ -270,6 +271,7 @@ cuptiSubscriberCallback(
   )
 {
   if (domain == CUPTI_CB_DOMAIN_DRIVER_API) {
+    // printf("cb_id = %d\n", cb_id);
     if (cb_id == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel) {
       uint64_t id;
       if (cb_info->callbackSite == CUPTI_API_ENTER) {
