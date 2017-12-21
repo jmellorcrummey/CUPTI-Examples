@@ -184,14 +184,14 @@ printActivity(CUpti_Activity *record)
     case CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION:
       {
         CUpti_ActivityExternalCorrelation *ec = (CUpti_ActivityExternalCorrelation *)record;
-        printf("external id %d\n", ec->externalId);
+        printf("external id %d corrId = %d\n", ec->externalId, ec->correlationId);
         break;
       }
     case CUPTI_ACTIVITY_KIND_PC_SAMPLING:
       {
         CUpti_ActivityPCSampling2 *psRecord = (CUpti_ActivityPCSampling2 *)record;
 
-        printf("source %u, functionId %u, pc 0x%x, corr %u, samples %u, stallreason %s\n",
+        printf("source %u, functionId %u, pc 0x%x, corrId %u, samples %u, stallreason %s\n",
           psRecord->sourceLocatorId,
           psRecord->functionId,
           psRecord->pcOffset,
@@ -258,6 +258,7 @@ finiTrace()
 {
   CUPTI_CALL(cuptiUnsubscribe(cuptiSubscriber));
   CUPTI_CALL(cuptiEnableDomain(0, cuptiSubscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain(0, cuptiSubscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
   CUPTI_CALL(cuptiActivityFlushAll(0));
 }
 
@@ -276,13 +277,37 @@ cuptiSubscriberCallback(
       uint64_t id;
       if (cb_info->callbackSite == CUPTI_API_ENTER) {
         id = localId;
-        printf("Push externalId %u\n", id);
+        printf("Driver push externalId %u (cb_id = %d)\n", id, cb_id);
         CUPTI_CALL(cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, id));
       }
       if (cb_info->callbackSite == CUPTI_API_EXIT) {
         CUPTI_CALL(cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &id));
-        printf("Pop externalId %u\n", id);
+        printf("Driver pop externalId %u (cb_id = %d)\n", id, cb_id);
       }
+    }
+  }
+  if (domain == CUPTI_CB_DOMAIN_RUNTIME_API) { 
+    uint64_t id;
+    // printf("cb_id = %d\n", cb_id);
+    switch (cb_id) {
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_v3020:
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_v7000:
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunch_ptsz_v7000:
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchKernel_ptsz_v7000:
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernel_v9000:
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernel_ptsz_v9000:
+    case CUPTI_RUNTIME_TRACE_CBID_cudaLaunchCooperativeKernelMultiDevice_v9000:  
+      if (cb_info->callbackSite == CUPTI_API_ENTER) {
+        id = localId;
+        printf("Runtime push externalId %u (cb_id = %d)\n", id, cb_id);
+        CUPTI_CALL(cuptiActivityPushExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, id));
+      }
+      if (cb_info->callbackSite == CUPTI_API_EXIT) {
+        CUPTI_CALL(cuptiActivityPopExternalCorrelationId(CUPTI_EXTERNAL_CORRELATION_KIND_UNKNOWN, &id));
+        printf("Runtime pop externalId %u (cb_id = %d)\n", id, cb_id);
+      }
+    default:
+      break;
     }
   }
 }
@@ -296,6 +321,7 @@ initTrace()
       (CUpti_CallbackFunc) cuptiSubscriberCallback,
       (void *) NULL));
   CUPTI_CALL(cuptiEnableDomain(1, cuptiSubscriber, CUPTI_CB_DOMAIN_DRIVER_API));
+  CUPTI_CALL(cuptiEnableDomain(1, cuptiSubscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
 
   size_t attrValue = 0, attrValueSize = sizeof(size_t);
   // Device activity record is created when CUDA initializes, so we
